@@ -1,28 +1,26 @@
-// Require the necessary node classes
-const fs = require("node:fs");
-const path = require("node:path");
-// Require the necessary discord.js classes
-const {
+import { readdirSync } from "fs";
+import { join } from "path";
+import {
   Client,
   Collection,
   Events,
   GatewayIntentBits,
   PermissionFlagsBits,
-} = require("discord.js");
-// Initialize dotenv
-const dotenv = require("dotenv");
-// Require openai
-const { Configuration, OpenAIApi } = require("openai");
-// Require global functions
-const { initPersonalities } = require(path.join(__dirname, "common.js"));
+} from "discord.js";
+import { config } from "dotenv";
+import { Configuration, OpenAIApi } from "openai";
+import { mapDefaultPersonalities, defaultPersonalities } from "./common.js";
+import { scheduleJob } from "node-schedule";
+import { commands } from "./commands/index.js";
 
-// Initialize dotenv config file
-const args = process.argv.slice(2);
-let envFile = ".env";
-if (args.length === 1) {
-  envFile = `${args[0]}`;
-}
-dotenv.config({ path: envFile });
+// dotenv init
+config();
+
+// setup cleanup job
+const schedule = scheduleJob("/20 * * * * *", () => {
+  const now = Date.now();
+  console.log("schedule fired", now);
+});
 
 // Set OpenAI API key
 const configuration = new Configuration({
@@ -43,22 +41,11 @@ const client = new Client({
 
 // Initialize Commands
 client.commands = new Collection();
-const commandsPath = path.join(__dirname, "commands");
-const commandFiles = fs
-  .readdirSync(commandsPath)
-  .filter((file) => file.endsWith(".js"));
+
 // Initialize command files
-for (const file of commandFiles) {
-  const filePath = path.join(commandsPath, file);
-  const command = require(filePath);
+for (const command of commands) {
   // Set a new item in the Collection with the key as the command name and the value as the exported module
-  if ("data" in command && "execute" in command) {
-    client.commands.set(command.data.name, command);
-  } else {
-    console.log(
-      `[WARNING] The command at ${filePath} is missing a required "data" or "execute" property.`
-    );
-  }
+  client.commands.set(command.data.name, command);
 }
 
 // Console log when logged in
@@ -78,7 +65,7 @@ let state = {
 };
 
 // Run function
-initPersonalities(state.personalities, process.env);
+state.personalities = mapDefaultPersonalities(defaultPersonalities);
 
 // Get called personality from message
 function getPersonality(message) {
@@ -117,23 +104,12 @@ function splitMessage(resp, charLim) {
   return responses;
 }
 
-// Send command responses function
-function sendCmdResp(msg, cmdResp) {
-  if (process.env.REPLY_MODE === "true") {
-    msg.reply(cmdResp);
-  } else {
-    msg.channel.send(cmdResp);
-  }
-}
-
 // Set channels
-channelIds = process.env?.CHANNELS?.split(",");
+const channelIds = process.env.CHANNELS?.split(",");
 
 // Set admin user IDs
-adminId = process.env.ADMIN_ID.split(",");
+const adminIds = process.env.ADMIN_ID?.split(",");
 
-// Set unrestricted role(s)
-unrestrictedRoles = process.env?.UNRESTRICTED_ROLE_IDS?.split(",");
 let isUnrestricted = null;
 
 // Check message author id function
@@ -144,7 +120,7 @@ function isAdmin(msg) {
   ) {
     return true;
   } else {
-    return adminId.includes(msg.author.id);
+    return adminIds.includes(msg.author.id);
   }
 }
 
@@ -188,11 +164,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
   }
 });
 
-client.on("threadDelete", async (thread) => {
-  // delete threads from personalities
-  deleteThread(thread.id);
-});
-
 client.on("messageCreate", async (msg) => {
   // Don't do anything when not in bot channel
   const channelCond = [
@@ -219,36 +190,14 @@ client.on("messageCreate", async (msg) => {
   // Don't reply to system messages
   if (msg.system) return;
 
-  p = null;
-
-  //   // Check if message is a reply
-  //   if (msg.reference?.messageId) {
-  //     let refMsg = await msg.fetchReference();
-  //     // Check if the reply is to the bot
-  //     if (refMsg.author.id === client.user.id) {
-  //       // Check the personality that the message being replied to is from
-  //       p = state.personalities.find((pers) =>
-  //         pers.request.some((element) => element.content === refMsg.content)
-  //       );
-  //     }
-  //   }
+  let p = null;
 
   // Check if message is from joined thread if no personality name
   if (p == null && msg.channel.isThread() && msg.channel.joined) {
-    // Fetch last message from bot
-    // let messages = await msg.channel.messages.fetch();
-    // let lastMsg = messages.find((msg) => msg.author.id === client.user.id);
-    // If no message found, fetch starter message
-    // if (lastMsg == null) {
-    //   lastMsg = await msg.channel.fetchStarterMessage();
-    // }
     initialPrompt = await msg.channel.fetchStarterMessage();
 
     // Set personality to last message from bot personality
     p = getPersonality(initialPrompt?.content.toUpperCase());
-    // p = state.personalities.find((pers) =>
-    //   pers.request.some((element) => element.content === lastMsg?.content)
-    // );
   }
 
   // Run get personality from message function if not reply to bot
@@ -258,78 +207,6 @@ client.on("messageCreate", async (msg) => {
 
   // Don't reply if no personality found
   if (p == null) return;
-
-  // Check if not admin
-  //   if (!isAdmin(msg)) {
-  //     // Check if bot disabled/enabled
-  //     if (state.isPaused === true) {
-  //       sendCmdResp(msg, process.env.DISABLED_MSG);
-  //       return;
-  //     }
-
-  //     // Check is user has an unrestricted roles
-  //     for (let i = 0; i < unrestrictedRoles?.length; i++) {
-  //       isUnrestricted = msg.member.roles.cache.has(unrestrictedRoles[i]);
-  //       if (isUnrestricted === true) break;
-  //     }
-
-  //     if (!isUnrestricted) {
-  //       const tokenResetTime = parseInt(process.env?.TOKEN_RESET_TIME, 10);
-  //       timePassed = Math.abs(new Date() - state.tokenTimer);
-  //       // Set variables on first start or when time exceeds token timer
-  //       if (
-  //         (tokenResetTime != "" || tokenResetTime != undefined) &&
-  //         (timePassed >= tokenResetTime || state.tokenTimer === null)
-  //       ) {
-  //         state.tokenTimer = new Date();
-  //         state.tokenCount = 0;
-  //       }
-  //       // Send message when token limit reached
-  //       if (
-  //         (tokenResetTime != "" || tokenResetTime != undefined) &&
-  //         timePassed < tokenResetTime &&
-  //         state.tokenCount >= parseInt(process.env?.TOKEN_NUM, 10)
-  //       ) {
-  //         sendCmdResp(
-  //           msg,
-  //           process.env.TOKEN_LIMIT_MSG.replace(
-  //             "<m>",
-  //             Math.round((tokenResetTime - timePassed) / 6000) / 10
-  //           )
-  //         );
-  //         return;
-  //       }
-
-  //       const slowModeTime = parseInt(process.env?.SLOW_MODE_TIME, 10);
-  //       smTimePassed = Math.abs(
-  //         new Date() - state.slowModeTimer?.[msg.author.id]
-  //       );
-  //       // Set variables on first start or when time exceeds slow mode timer
-  //       if (
-  //         (slowModeTime != "" || slowModeTime != undefined) &&
-  //         (smTimePassed >= slowModeTime ||
-  //           state.slowModeTimer?.[msg.author.id] == undefined)
-  //       ) {
-  //         state.slowModeTimer[msg.author.id] = new Date();
-  //       }
-  //       // Send message when slow mode reached
-  //       if (
-  //         (slowModeTime != "" || slowModeTime != undefined) &&
-  //         smTimePassed < slowModeTime
-  //       ) {
-  //         smMsg = process.env.SLOW_MODE_MSG.replace(
-  //           "<m>",
-  //           Math.round((slowModeTime - smTimePassed) / 6000) / 10
-  //         );
-  //         smMsg = smMsg.replace(
-  //           "<s>",
-  //           Math.round((slowModeTime - smTimePassed) / 1000)
-  //         );
-  //         sendCmdResp(msg, smMsg);
-  //         return;
-  //       }
-  //     }
-  //   }
 
   // Check if it is a new month
   let today = new Date();
@@ -373,36 +250,23 @@ client.on("messageCreate", async (msg) => {
   const responseChunks = splitMessage(response, 2000);
   // Send the split API response
   for (let i = 0; i < responseChunks.length; i++) {
-    switch (process.env.REPLY_MODE) {
-      case "thread":
-        if (msg.channel.isThread()) {
-          msg.channel.send(responseChunks[i]);
-        } else {
-          const title = await summarize(msg.content);
-          const thread = await msg.startThread({
-            name: title,
-            autoArchiveDuration: 60,
-          });
-          thread.send(responseChunks[i]);
-          p.threads[thread.id] = request;
-        }
-        break;
-      case "true":
-        i === 0
-          ? msg.reply(responseChunks[i])
-          : msg.channel.send(responseChunks[i]);
-        break;
-      default:
-        msg.channel.send(responseChunks[i]);
-        break;
+    if (msg.channel.isThread()) {
+      msg.channel.send(responseChunks[i]);
+    } else {
+      const title = await summarize(msg.content);
+      const thread = await msg.startThread({
+        name: title,
+        autoArchiveDuration: 60,
+      });
+      thread.send(responseChunks[i]);
+      p.threads[thread.id] = request;
     }
+    break;
   }
 });
 
-// API request function
-async function chat(requestX, msg) {
+const chat = async (requestX, msg) => {
   try {
-    // Make API request
     const completion = await openai.createChatCompletion({
       model: "gpt-3.5-turbo",
       messages: requestX,
@@ -416,43 +280,21 @@ async function chat(requestX, msg) {
     // Increase total token count
     state.totalTokenCount += completion.data.usage.total_tokens;
 
-    let responseContent;
-
-    // Check capitlization mode
-    switch (process.env.CASE_MODE) {
-      case "":
-        responseContent = completion.data.choices[0].message.content;
-        break;
-      case "upper":
-        responseContent =
-          completion.data.choices[0].message.content.toUpperCase();
-        break;
-      case "lower":
-        responseContent =
-          completion.data.choices[0].message.content.toLowerCase();
-        break;
-      default:
-        console.log(
-          "[WARNING] Invalid CASE_MODE value. Please change and restart bot."
-        );
-    }
+    let responseContent = completion.data.choices[0].message.content;
 
     // Add assistant message to next request
     requestX.push({ role: "assistant", content: `${responseContent}` });
 
-    // Return response
     return responseContent;
   } catch (error) {
     // Return error message if API error occurs
     console.error(`[ERROR] OpenAI API request failed: ${error}`);
     return process.env.API_ERROR_MSG;
   }
-}
+};
 
-// API request function
-async function summarize(prompt) {
+const summarize = async (prompt) => {
   try {
-    // Make API request
     const completion = await openai.createChatCompletion({
       model: "gpt-3.5-turbo",
       messages: [
@@ -471,16 +313,13 @@ async function summarize(prompt) {
     // Increase total token count
     state.totalTokenCount += completion.data.usage.total_tokens;
 
-    let responseContent = completion.data.choices[0].message.content;
-
-    // Return response
-    return responseContent;
+    return completion.data.choices[0].message.content;
   } catch (error) {
     // Return error message if API error occurs
     console.error(`[ERROR] OpenAI API request failed: ${error}`);
     return process.env.API_ERROR_MSG;
   }
-}
+};
 
 // Log in to Discord with your client's token
 client.login(process.env.CLIENT_TOKEN);
