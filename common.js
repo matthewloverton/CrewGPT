@@ -27,7 +27,6 @@ export const mapDefaultPersonalities = (personalities) => {
       name: personality.name,
       description: personality.description,
       systemPrompt: [{ role: "system", content: personality.systemPrompt }],
-      threads: [],
     };
   });
 };

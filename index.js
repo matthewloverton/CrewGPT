@@ -22,15 +22,23 @@ const milliseconds = (h, m, s) => (h * 60 * 60 + m * 60 + s) * 1000;
 const scheduler = new ToadScheduler();
 const cleanupTask = new Task("clean threads", () => {
   let now = Date.now();
-  if (state.personalities[0].threads[0]?.created_at) {
-    let cleanupTime = milliseconds(0, 0, 5);
-    let diff = now - state.personalities[0].threads[0]?.created_at;
-    console.log(diff);
+  let cleanup = 0;
+  for (let i = state.threads.length - 1; i >= 0; i--) {
+    let thread = state.threads[i];
+    let cleanupTime = milliseconds(1, 0, 0);
+    let diff = now - thread.created_at;
     if (cleanupTime < diff) {
-      console.log("cleanup!");
-      delete state.personalities[0].threads[0];
+      let clientThread = client.channels.cache.find(
+        (channel) => channel.id === thread.id
+      );
+      if (clientThread) {
+        clientThread.delete("Cleaning up threads.");
+        state.threads.splice(i, 1);
+        cleanup++;
+      }
     }
   }
+  console.log(`cleaned up ${cleanup} threads.`);
 });
 const cleanupJob = new SimpleIntervalJob({ seconds: 10 }, cleanupTask);
 scheduler.addSimpleIntervalJob(cleanupJob);
@@ -75,6 +83,7 @@ let state = {
   startTime: new Date(),
   totalTokenCount: 0,
   slowModeTimer: {},
+  threads: [],
 };
 
 // Run function
@@ -134,15 +143,6 @@ function isAdmin(msg) {
     return true;
   } else {
     return adminIds.includes(msg.author.id);
-  }
-}
-
-function deleteThread(threadId) {
-  for (let i = 0; i < state.personalities.length; i++) {
-    let personality = state.personalities[i];
-    if (personality.threads.hasOwnProperty(threadId)) {
-      return delete personality.threads[threadId];
-    }
   }
 }
 
@@ -207,15 +207,16 @@ client.on("messageCreate", async (msg) => {
   let threadId = null;
   let thread = null;
 
-  if (msg.channel.isThread()) threadId = msg.channelId;
+  if (msg.channel.isThread()) {
+    threadId = msg.channelId;
+    thread = state.threads.find((thread) => thread.id === threadId);
+  }
 
   // Check if message is from joined thread if no personality name
   if (p == null && threadId && msg.channel.joined) {
     let initialPrompt = await msg.channel.fetchStarterMessage();
-
     // Set personality to last message from bot personality
     p = getPersonality(initialPrompt?.content.toUpperCase());
-    thread = p.threads.find((thread) => thread.id === msg.channelId);
   }
 
   console.log(threadId, thread);
@@ -276,7 +277,7 @@ client.on("messageCreate", async (msg) => {
         autoArchiveDuration: 60,
       });
       newThread.send(responseChunks[i]);
-      p.threads.push({
+      state.threads.push({
         id: newThread.id,
         request: request,
         created_at: Date.now(),

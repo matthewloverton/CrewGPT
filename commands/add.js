@@ -57,7 +57,6 @@ export const execute = async (interaction, state) => {
         content: `${behaviour}`,
       },
     ],
-    threads: [],
   });
 
   await interaction.reply(
