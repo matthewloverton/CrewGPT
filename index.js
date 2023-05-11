@@ -10,17 +10,30 @@ import {
 import { config } from "dotenv";
 import { Configuration, OpenAIApi } from "openai";
 import { mapDefaultPersonalities, defaultPersonalities } from "./common.js";
-import { scheduleJob } from "node-schedule";
+import { ToadScheduler, SimpleIntervalJob, Task } from "toad-scheduler";
 import { commands } from "./commands/index.js";
 
 // dotenv init
 config();
 
+const milliseconds = (h, m, s) => (h * 60 * 60 + m * 60 + s) * 1000;
+
 // setup cleanup job
-const schedule = scheduleJob("/20 * * * * *", () => {
-  const now = Date.now();
-  console.log("schedule fired", now);
+const scheduler = new ToadScheduler();
+const cleanupTask = new Task("clean threads", () => {
+  let now = Date.now();
+  if (state.personalities[0].threads[0]?.created_at) {
+    let cleanupTime = milliseconds(0, 0, 5);
+    let diff = now - state.personalities[0].threads[0]?.created_at;
+    console.log(diff);
+    if (cleanupTime < diff) {
+      console.log("cleanup!");
+      delete state.personalities[0].threads[0];
+    }
+  }
 });
+const cleanupJob = new SimpleIntervalJob({ seconds: 10 }, cleanupTask);
+scheduler.addSimpleIntervalJob(cleanupJob);
 
 // Set OpenAI API key
 const configuration = new Configuration({
@@ -191,14 +204,21 @@ client.on("messageCreate", async (msg) => {
   if (msg.system) return;
 
   let p = null;
+  let threadId = null;
+  let thread = null;
+
+  if (msg.channel.isThread()) threadId = msg.channelId;
 
   // Check if message is from joined thread if no personality name
-  if (p == null && msg.channel.isThread() && msg.channel.joined) {
-    initialPrompt = await msg.channel.fetchStarterMessage();
+  if (p == null && threadId && msg.channel.joined) {
+    let initialPrompt = await msg.channel.fetchStarterMessage();
 
     // Set personality to last message from bot personality
     p = getPersonality(initialPrompt?.content.toUpperCase());
+    thread = p.threads.find((thread) => thread.id === msg.channelId);
   }
+
+  console.log(threadId, thread);
 
   // Run get personality from message function if not reply to bot
   if (p == null) {
@@ -217,49 +237,50 @@ client.on("messageCreate", async (msg) => {
 
   let request = null;
 
-  if (msg.channel.isThread()) {
-    p.threads[msg.channelId].push({ role: "user", content: `${msg.content}` });
-  } else {
-    // Add user message to request
-    request = [...p.request];
-    request.push({ role: "user", content: `${msg.content}` });
-  }
-
-  // Truncate conversation if # of messages in conversation exceed MSG_LIMIT
-  if (msg.channel.isThread()) {
+  if (thread) {
+    thread.request.push({
+      role: "user",
+      content: `${msg.content}`,
+    });
     if (
       process.env.MSG_LIMIT !== "" &&
-      p.threads[msg.channelId].length - 1 > parseInt(process.env.MSG_LIMIT, 10)
+      thread.request.length - 1 > parseInt(process.env.MSG_LIMIT, 10)
     ) {
       let delMsg =
-        p.threads[msg.channelId].length -
-        1 -
-        parseInt(process.env.MSG_LIMIT, 10);
-      p.threads[msg.channelId].splice(1, delMsg);
+        thread.request.length - 1 - parseInt(process.env.MSG_LIMIT, 10);
+      thread.request.splice(1, delMsg);
     }
+  } else {
+    // Add user message to request
+    request = [...p.systemPrompt];
+    request.push({ role: "user", content: `${msg.content}` });
   }
 
   // Start typing indicator
   msg.channel.sendTyping();
   // Run API request function
-  const response = msg.channel.isThread()
-    ? await chat(p.threads[msg.channelId], msg)
+  const response = thread
+    ? await chat(thread.request, msg)
     : await chat(request, msg);
 
   // Split response if it exceeds the Discord 2000 character limit
   const responseChunks = splitMessage(response, 2000);
   // Send the split API response
   for (let i = 0; i < responseChunks.length; i++) {
-    if (msg.channel.isThread()) {
+    if (thread) {
       msg.channel.send(responseChunks[i]);
     } else {
       const title = await summarize(msg.content);
-      const thread = await msg.startThread({
+      const newThread = await msg.startThread({
         name: title,
         autoArchiveDuration: 60,
       });
-      thread.send(responseChunks[i]);
-      p.threads[thread.id] = request;
+      newThread.send(responseChunks[i]);
+      p.threads.push({
+        id: newThread.id,
+        request: request,
+        created_at: Date.now(),
+      });
     }
     break;
   }
@@ -323,3 +344,15 @@ const summarize = async (prompt) => {
 
 // Log in to Discord with your client's token
 client.login(process.env.CLIENT_TOKEN);
+
+process.on("SIGTERM", (signal) => {
+  console.log(`Process ${process.pid} received a SIGTERM signal`);
+  scheduler.stop();
+  process.exit(0);
+});
+
+process.on("SIGINT", (signal) => {
+  console.log(`Process ${process.pid} has been interrupted`);
+  scheduler.stop();
+  process.exit(0);
+});

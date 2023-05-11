@@ -51,13 +51,13 @@ export const execute = async (interaction, state) => {
   state.personalities.push({
     name: name,
     description: description,
-    request: [
+    systemPrompt: [
       {
         role: "system",
         content: `${behaviour}`,
       },
     ],
-    threads: {},
+    threads: [],
   });
 
   await interaction.reply(
