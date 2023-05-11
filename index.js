@@ -40,7 +40,7 @@ const cleanupTask = new Task("clean threads", () => {
   }
   console.log(`cleaned up ${cleanup} threads.`);
 });
-const cleanupJob = new SimpleIntervalJob({ seconds: 10 }, cleanupTask);
+const cleanupJob = new SimpleIntervalJob({ hours: 1 }, cleanupTask);
 scheduler.addSimpleIntervalJob(cleanupJob);
 
 // Set OpenAI API key
