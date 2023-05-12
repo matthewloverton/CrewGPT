@@ -1,16 +1,17 @@
-// Requre the necessary discord.js classes
-const { SlashCommandBuilder, PermissionFlagsBits } = require('discord.js');
+import { SlashCommandBuilder, PermissionFlagsBits } from "discord.js";
 
-module.exports = {
-    data: new SlashCommandBuilder()
-        // Command details
-        .setName('enable')
-        .setDescription('Enable the bot.')
-        .setDefaultMemberPermissions(PermissionFlagsBits.ManageMessages)
-        .setDMPermission(false),
-    async execute(interaction, state) {
-        // Commands to execute
-        state.isPaused = false;
-        await interaction.reply(process.env.ENABLE_MSG);
-    },
+export const data = new SlashCommandBuilder()
+  .setName("enable")
+  .setDescription("Enable the bot.")
+  .setDefaultMemberPermissions(PermissionFlagsBits.ManageMessages)
+  .setDMPermission(false);
+
+export const execute = async (interaction, state) => {
+  state.isPaused = false;
+  await interaction.reply(process.env.ENABLE_MSG);
+};
+
+export default {
+  data,
+  execute,
 };

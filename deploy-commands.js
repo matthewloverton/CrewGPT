@@ -1,72 +1,76 @@
 // Use this file to deploy or delete bot commands
-//      node deploy-commands.js                                    - deploy all commands in ./commands/ using .env
-//      node deploy-commands.js ENV_NAME                           - deploy all commands using custom not default env
-//      node deploy-commands.js -x ignore.js,test.js               - deploy all commands but ignore ignore.js and test.js commands
+//      node deploy-commands.js                                    - deploy all commands in commands/index.js
 //      node deploy-commands.js -d ID                              - delete a global command with id
 //      Args Usage:
-//          -x <filename>: Ignore a specific file when deploying commands.
 //          -d <command_id>: Delete a command by its ID.
 
-// Require necessary classes
-const { REST, Routes } = require('discord.js');
-const dotenv = require('dotenv');
-const fs = require('node:fs');
-const path = require('node:path');
-const { Client, Events, GatewayIntentBits } = require('discord.js');
+import { config } from "dotenv";
+import { REST, Routes, Client, Events, GatewayIntentBits } from "discord.js";
+import { commands } from "./commands/index.js";
 
 // Initialize command files
 const args = process.argv.slice(2);
-let envFile = '.env';
-let ignoreFiles = [];
-let deleteCommandId;
-for (let i = 0; i < args.length; i++) {
-  if (i === 0 && !args[i].startsWith('-')) {
-    envFile = `${args[i]}`;
-  } else if (args[i] === '-x' && args[i + 1]) {
-    ignoreFiles = args[i + 1].split(',');
-    i++;
-  } else if (args[i] === '-d' && args[i + 1]) {
-    deleteCommandId = args[i + 1];
-    i++;
-  }
-}
-dotenv.config({ path: envFile });
+let deleteCommandId = null;
+let global = false;
+const deleteIndex = args.findIndex((arg) => arg === "-d");
+const gloablIndex = args.findIndex((arg) => arg === "-g");
 
-const commands = [];
-// Grab all the command files from the commands directory
-const commandsPath = path.join(__dirname, 'commands');
-const commandFiles = fs.readdirSync(commandsPath).filter(file => file.endsWith('.js') && !ignoreFiles.includes(file));
+if (deleteIndex !== -1) deleteCommandId = args[deleteIndex + 1];
+if (gloablIndex !== -1) global = true;
+
+config();
+
+let commandData = [];
 
 // Get command details
-for (const file of commandFiles) {
-  const command = require(`./commands/${file}`);
-  commands.push(command.data.toJSON());
+for (const command of commands) {
+  commandData.push(command.data.toJSON());
 }
 
 // Construct and prepare an instance of the REST module
-const rest = new REST({ version: '10' }).setToken(process.env.CLIENT_TOKEN);
+const rest = new REST({ version: "10" }).setToken(process.env.CLIENT_TOKEN);
 
 let clientId;
+let guildId;
 const client = new Client({ intents: [GatewayIntentBits.Guilds] });
 
 // Run once logged in
-client.once(Events.ClientReady, c => {
+client.once(Events.ClientReady, (c) => {
   clientId = client.user.id;
+  guildId = client.guilds.cache.firstKey();
 
   // Deploy (or delete) commands
   (async () => {
     if (deleteCommandId) {
       try {
         await rest.delete(Routes.applicationCommand(clientId, deleteCommandId));
-        console.log(`Successfully deleted application command with ID: ${deleteCommandId}`);
+        console.log(
+          `Successfully deleted application command with ID: ${deleteCommandId}`
+        );
       } catch (error) {
         console.error(error);
       }
     } else {
       try {
-        console.log(`Started refreshing ${commands.length} application (/) commands.`);
-        const data = await rest.put(Routes.applicationCommands(clientId), { body: commands });
-        console.log(`Successfully reloaded ${data.length} application (/) commands.`);
+        console.log(
+          `Started refreshing ${commandData.length} application (/) commands.`
+        );
+        let data;
+        if (global) {
+          data = await rest.put(Routes.applicationCommands(clientId), {
+            body: commandData,
+          });
+        } else {
+          data = await rest.put(
+            Routes.applicationGuildCommands(clientId, guildId),
+            {
+              body: commandData,
+            }
+          );
+        }
+        console.log(
+          `Successfully reloaded ${data.length} application (/) commands.`
+        );
       } catch (error) {
         console.error(error);
       }
