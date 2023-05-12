@@ -4,6 +4,7 @@ import enable from "./enable.js";
 import personalities from "./personalities.js";
 import tokencount from "./tokencount.js";
 import tokenreset from "./tokenreset.js";
+import set from "./set.js";
 
 export const commands = [
   add,
@@ -12,4 +13,5 @@ export const commands = [
   personalities,
   tokencount,
   tokenreset,
+  set,
 ];

@@ -1,5 +1,3 @@
-import { readdirSync } from "fs";
-import { join } from "path";
 import {
   Client,
   Collection,
@@ -31,11 +29,9 @@ const cleanupTask = new Task("clean threads", () => {
       let clientThread = client.channels.cache.find(
         (channel) => channel.id === thread.id
       );
-      if (clientThread) {
-        clientThread.delete("Cleaning up threads.");
-        state.threads.splice(i, 1);
-        cleanup++;
-      }
+      if (clientThread) clientThread.delete("Cleaning up threads.");
+      state.threads.splice(i, 1);
+      cleanup++;
     }
   }
   console.log(`cleaned up ${cleanup} threads.`);
@@ -84,27 +80,11 @@ let state = {
   totalTokenCount: 0,
   slowModeTimer: {},
   threads: [],
+  members: {},
 };
 
 // Run function
 state.personalities = mapDefaultPersonalities(defaultPersonalities);
-
-// Get called personality from message
-function getPersonality(message) {
-  // Function to check for the personality name
-  const checkPers = (msg, word) =>
-    new RegExp("\\b" + word + "\\b", "i").test(msg);
-  let personality = null;
-  // For each personality, check if the message includes the the name of the personality
-  for (let i = 0; i < state.personalities.length; i++) {
-    let thisPersonality = state.personalities[i];
-    if (checkPers(message, thisPersonality.name)) {
-      personality = thisPersonality;
-    }
-  }
-  // Return the personality of the message
-  return personality;
-}
 
 // Split message function
 function splitMessage(resp, charLim) {
@@ -148,31 +128,47 @@ function isAdmin(msg) {
 
 // Listen for interactions/Commands
 client.on(Events.InteractionCreate, async (interaction) => {
-  // Don't do anything if the interaction is not a slash command
-  if (!interaction.isChatInputCommand()) return;
+  if (interaction.isChatInputCommand()) {
+    const command = interaction.client.commands.get(interaction.commandName);
 
-  const command = interaction.client.commands.get(interaction.commandName);
+    if (!command) {
+      console.error(
+        `No command matching ${interaction.commandName} was found.`
+      );
+      return;
+    }
 
-  if (!command) {
-    console.error(`No command matching ${interaction.commandName} was found.`);
-    return;
-  }
+    // Execute the command and log errors if they appear
+    try {
+      await command.execute(interaction, state);
+    } catch (error) {
+      console.error(error);
+      if (interaction.replied || interaction.deferred) {
+        await interaction.followUp({
+          content: "There was an error while executing this command!",
+          ephemeral: true,
+        });
+      } else {
+        await interaction.reply({
+          content: "There was an error while executing this command!",
+          ephemeral: true,
+        });
+      }
+    }
+  } else if (interaction.isAutocomplete()) {
+    const command = interaction.client.commands.get(interaction.commandName);
 
-  // Execute the command and log errors if they appear
-  try {
-    await command.execute(interaction, state);
-  } catch (error) {
-    console.error(error);
-    if (interaction.replied || interaction.deferred) {
-      await interaction.followUp({
-        content: "There was an error while executing this command!",
-        ephemeral: true,
-      });
-    } else {
-      await interaction.reply({
-        content: "There was an error while executing this command!",
-        ephemeral: true,
-      });
+    if (!command) {
+      console.error(
+        `No command matching ${interaction.commandName} was found.`
+      );
+      return;
+    }
+
+    try {
+      await command.autocomplete(interaction, state);
+    } catch (error) {
+      console.error(error);
     }
   }
 });
@@ -185,6 +181,7 @@ client.on("messageCreate", async (msg) => {
     msg.channel?.parentId,
     msg.channel?.parent?.name,
   ];
+
   if (
     channelIds != "" &&
     typeof channelIds !== "undefined" &&
@@ -203,31 +200,37 @@ client.on("messageCreate", async (msg) => {
   // Don't reply to system messages
   if (msg.system) return;
 
-  let p = null;
+  // Check if message is a reply
+  if (msg.reference?.messageId) {
+    let refMsg = await msg.fetchReference();
+    // Check if the reply is to the bot
+    if (!(refMsg.author.id === client.user.id)) return;
+  } else if (!msg.mentions.parsedUsers.find((u) => u.client.id === client.id))
+    return;
+
+  msg.react("🧠");
+
+  let p = state.personalities[0];
   let threadId = null;
   let thread = null;
+  let newThread = null;
+
+  if (state.members[msg.author.id]) {
+    p = state.personalities.find(
+      (p) => p.name === state.members[msg.author.id]
+    );
+  }
 
   if (msg.channel.isThread()) {
     threadId = msg.channelId;
     thread = state.threads.find((thread) => thread.id === threadId);
+  } else {
+    const title = await summarize(msg.content);
+    newThread = await msg.startThread({
+      name: title,
+      autoArchiveDuration: 60,
+    });
   }
-
-  // Check if message is from joined thread if no personality name
-  if (p == null && threadId && msg.channel.joined) {
-    let initialPrompt = await msg.channel.fetchStarterMessage();
-    // Set personality to last message from bot personality
-    p = getPersonality(initialPrompt?.content.toUpperCase());
-  }
-
-  console.log(threadId, thread);
-
-  // Run get personality from message function if not reply to bot
-  if (p == null) {
-    p = getPersonality(msg.content.toUpperCase());
-  }
-
-  // Don't reply if no personality found
-  if (p == null) return;
 
   // Check if it is a new month
   let today = new Date();
@@ -238,7 +241,16 @@ client.on("messageCreate", async (msg) => {
 
   let request = null;
 
-  if (thread) {
+  if (newThread) {
+    request = [...p.systemPrompt];
+    request.push({ role: "user", content: `${msg.content}` });
+    thread = {
+      id: newThread.id,
+      request: request,
+      created_at: Date.now(),
+    };
+    state.threads.push(thread);
+  } else {
     thread.request.push({
       role: "user",
       content: `${msg.content}`,
@@ -251,37 +263,23 @@ client.on("messageCreate", async (msg) => {
         thread.request.length - 1 - parseInt(process.env.MSG_LIMIT, 10);
       thread.request.splice(1, delMsg);
     }
-  } else {
-    // Add user message to request
-    request = [...p.systemPrompt];
-    request.push({ role: "user", content: `${msg.content}` });
   }
 
   // Start typing indicator
-  msg.channel.sendTyping();
+  newThread ? newThread.sendTyping() : msg.channel.sendTyping();
   // Run API request function
-  const response = thread
-    ? await chat(thread.request, msg)
-    : await chat(request, msg);
+  const response = newThread
+    ? await chat(request, msg)
+    : await chat(thread.request, msg);
 
   // Split response if it exceeds the Discord 2000 character limit
   const responseChunks = splitMessage(response, 2000);
   // Send the split API response
   for (let i = 0; i < responseChunks.length; i++) {
-    if (thread) {
-      msg.channel.send(responseChunks[i]);
-    } else {
-      const title = await summarize(msg.content);
-      const newThread = await msg.startThread({
-        name: title,
-        autoArchiveDuration: 60,
-      });
+    if (newThread) {
       newThread.send(responseChunks[i]);
-      state.threads.push({
-        id: newThread.id,
-        request: request,
-        created_at: Date.now(),
-      });
+    } else {
+      msg.channel.send(responseChunks[i]);
     }
     break;
   }
@@ -323,7 +321,7 @@ const summarize = async (prompt) => {
         {
           role: "system",
           content:
-            "Summarize the input question into a short question, only output the question itself.",
+            "I want you to act as a title generator. I will type give you sentence or question and you will reply a title.",
         },
         {
           role: "user",

@@ -11,8 +11,12 @@ import { commands } from "./commands/index.js";
 // Initialize command files
 const args = process.argv.slice(2);
 let deleteCommandId = null;
+let global = false;
 const deleteIndex = args.findIndex((arg) => arg === "-d");
-if (deleteIndex) deleteCommandId = args[deleteIndex + 1];
+const gloablIndex = args.findIndex((arg) => arg === "-g");
+
+if (deleteIndex !== -1) deleteCommandId = args[deleteIndex + 1];
+if (gloablIndex !== -1) global = true;
 
 config();
 
@@ -27,11 +31,13 @@ for (const command of commands) {
 const rest = new REST({ version: "10" }).setToken(process.env.CLIENT_TOKEN);
 
 let clientId;
+let guildId;
 const client = new Client({ intents: [GatewayIntentBits.Guilds] });
 
 // Run once logged in
 client.once(Events.ClientReady, (c) => {
   clientId = client.user.id;
+  guildId = client.guilds.cache.firstKey();
 
   // Deploy (or delete) commands
   (async () => {
@@ -49,9 +55,19 @@ client.once(Events.ClientReady, (c) => {
         console.log(
           `Started refreshing ${commandData.length} application (/) commands.`
         );
-        const data = await rest.put(Routes.applicationCommands(clientId), {
-          body: commandData,
-        });
+        let data;
+        if (global) {
+          data = await rest.put(Routes.applicationCommands(clientId), {
+            body: commandData,
+          });
+        } else {
+          data = await rest.put(
+            Routes.applicationGuildCommands(clientId, guildId),
+            {
+              body: commandData,
+            }
+          );
+        }
         console.log(
           `Successfully reloaded ${data.length} application (/) commands.`
         );

@@ -43,6 +43,7 @@ export const execute = async (interaction, state) => {
   const existingPersonality = state.personalities.find(
     (p) => p.name.toUpperCase() === name.toUpperCase()
   );
+
   if (existingPersonality) {
     return await interaction.reply(process.env.UPDATE_PERS_ERROR_MSG);
   }
