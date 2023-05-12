@@ -3,7 +3,7 @@ import { SlashCommandBuilder, PermissionFlagsBits } from "discord.js";
 
 export const data = new SlashCommandBuilder()
   .setName("delete-personality")
-  .setDescription("Add a new personality to the bot.")
+  .setDescription("Delete an existing personality")
   .setDefaultMemberPermissions(PermissionFlagsBits.ManageMessages)
   .addStringOption((option) =>
     option
@@ -19,7 +19,10 @@ export const execute = async (interaction, state) => {
     !interaction.member.permissions.has(PermissionFlagsBits.ManageMessages) &&
     state.isPaused === true
   ) {
-    await interaction.reply(process.env.DISABLED_MSG);
+    await interaction.reply({
+      content: process.env.DISABLED_MSG,
+      ephemeral: true,
+    });
     return;
   }
   const name = interaction.options.getString("name");
@@ -30,7 +33,10 @@ export const execute = async (interaction, state) => {
   );
 
   if (index === -1) {
-    return await interaction.reply(process.env.DEL_PERS_ERROR_MSG);
+    return await interaction.reply({
+      content: process.env.DEL_PERS_ERROR_MSG,
+      ephemeral: true,
+    });
   }
 
   state.personalities.splice(index, 1);

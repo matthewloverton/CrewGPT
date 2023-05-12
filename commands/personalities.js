@@ -14,7 +14,10 @@ export const execute = async (interaction, state) => {
     !interaction.member.permissions.has(PermissionFlagsBits.ManageMessages) &&
     state.isPaused === true
   ) {
-    await interaction.reply(process.env.DISABLED_MSG);
+    await interaction.reply({
+      content: process.env.DISABLED_MSG,
+      ephemeral: true,
+    });
     return;
   }
 

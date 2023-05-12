@@ -43,7 +43,15 @@ client.once(Events.ClientReady, (c) => {
   (async () => {
     if (deleteCommandId) {
       try {
-        await rest.delete(Routes.applicationCommand(clientId, deleteCommandId));
+        if (global) {
+          await rest.delete(
+            Routes.applicationCommand(clientId, deleteCommandId)
+          );
+        } else {
+          await rest.delete(
+            Routes.applicationGuildCommand(clientId, guildId, deleteCommandId)
+          );
+        }
         console.log(
           `Successfully deleted application command with ID: ${deleteCommandId}`
         );
