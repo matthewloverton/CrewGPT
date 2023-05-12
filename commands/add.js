@@ -32,7 +32,10 @@ export const execute = async (interaction, state) => {
     !interaction.member.permissions.has(PermissionFlagsBits.ManageMessages) &&
     state.isPaused === true
   ) {
-    await interaction.reply(process.env.DISABLED_MSG);
+    await interaction.reply({
+      content: process.env.DISABLED_MSG,
+      ephemeral: true,
+    });
     return;
   }
   const name = interaction.options.getString("name");
@@ -45,7 +48,10 @@ export const execute = async (interaction, state) => {
   );
 
   if (existingPersonality) {
-    return await interaction.reply(process.env.UPDATE_PERS_ERROR_MSG);
+    return await interaction.reply({
+      content: process.env.UPDATE_PERS_ERROR_MSG,
+      ephemeral: true,
+    });
   }
 
   // Add the new personality
