@@ -3,7 +3,7 @@ import { SlashCommandBuilder, PermissionFlagsBits } from "discord.js";
 
 export const data = new SlashCommandBuilder()
   .setName("delete-personality")
-  .setDescription("Add a new personality to the bot.")
+  .setDescription("Delete an existing personality")
   .setDefaultMemberPermissions(PermissionFlagsBits.ManageMessages)
   .addStringOption((option) =>
     option

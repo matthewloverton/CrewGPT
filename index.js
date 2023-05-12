@@ -173,6 +173,12 @@ client.on(Events.InteractionCreate, async (interaction) => {
   }
 });
 
+const removeMentions = (str) => {
+  const regex = /<@\w+>/g;
+  const result = str.replace(regex, "");
+  return result;
+};
+
 client.on("messageCreate", async (msg) => {
   // Don't do anything when not in bot channel
   const channelCond = [
@@ -240,6 +246,8 @@ client.on("messageCreate", async (msg) => {
 
   let request = null;
 
+  msg.content = removeMentions(msg.content);
+
   if (newThread) {
     request = [...p.systemPrompt];
     request.push({ role: "user", content: `${msg.content}` });
@@ -280,7 +288,6 @@ client.on("messageCreate", async (msg) => {
     } else {
       msg.channel.send(responseChunks[i]);
     }
-    break;
   }
 });
 
@@ -303,6 +310,8 @@ const chat = async (requestX, msg) => {
 
     // Add assistant message to next request
     requestX.push({ role: "assistant", content: `${responseContent}` });
+
+    console.log(requestX);
 
     return responseContent;
   } catch (error) {
