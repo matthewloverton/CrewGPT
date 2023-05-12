@@ -23,7 +23,11 @@ const cleanupTask = new Task("clean threads", () => {
   let cleanup = 0;
   for (let i = state.threads.length - 1; i >= 0; i--) {
     let thread = state.threads[i];
-    let cleanupTime = milliseconds(1, 0, 0);
+    let cleanupTime = milliseconds(
+      process.env.CLEANUP_HOURS,
+      process.env.CLEANUP_MINUTES,
+      0
+    );
     let diff = now - thread.created_at;
     if (cleanupTime < diff) {
       let clientThread = client.channels.cache.find(
