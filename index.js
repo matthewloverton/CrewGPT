@@ -208,8 +208,6 @@ client.on("messageCreate", async (msg) => {
   } else if (!msg.mentions.parsedUsers.find((u) => u.client.id === client.id))
     return;
 
-  msg.react("🧠");
-
   let p = state.personalities[0];
   let threadId = null;
   let thread = null;
@@ -225,6 +223,7 @@ client.on("messageCreate", async (msg) => {
     threadId = msg.channelId;
     thread = state.threads.find((thread) => thread.id === threadId);
   } else {
+    msg.react("🧠");
     const title = await summarize(msg.content);
     newThread = await msg.startThread({
       name: title,
