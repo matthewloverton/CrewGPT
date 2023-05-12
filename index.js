@@ -311,8 +311,6 @@ const chat = async (requestX, msg) => {
     // Add assistant message to next request
     requestX.push({ role: "assistant", content: `${responseContent}` });
 
-    console.log(requestX);
-
     return responseContent;
   } catch (error) {
     // Return error message if API error occurs
