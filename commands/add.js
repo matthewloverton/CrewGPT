@@ -27,17 +27,6 @@ export const data = new SlashCommandBuilder()
   .setDMPermission(false);
 
 export const execute = async (interaction, state) => {
-  // Check admin/pause state
-  if (
-    !interaction.member.permissions.has(PermissionFlagsBits.ManageMessages) &&
-    state.isPaused === true
-  ) {
-    await interaction.reply({
-      content: process.env.DISABLED_MSG,
-      ephemeral: true,
-    });
-    return;
-  }
   const name = interaction.options.getString("name");
   const description = interaction.options.getString("description");
   const behaviour = interaction.options.getString("behaviour");
