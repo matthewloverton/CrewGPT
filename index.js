@@ -392,7 +392,11 @@ const summarize = async (prompt) => {
 };
 
 // Log in to Discord with your client's token
-client.login(process.env.CLIENT_TOKEN);
+client.login(
+  process.env.NODE_ENV === "dev"
+    ? process.env.CLIENT_TOKEN_DEV
+    : process.env.CLIENT_TOKEN
+);
 
 process.on("SIGTERM", (signal) => {
   console.log(`Process ${process.pid} received a SIGTERM signal`);
