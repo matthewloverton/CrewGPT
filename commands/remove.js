@@ -2,8 +2,8 @@
 import { SlashCommandBuilder, PermissionFlagsBits } from "discord.js";
 
 export const data = new SlashCommandBuilder()
-  .setName("delete-personality")
-  .setDescription("Delete an existing personality")
+  .setName("remove-personality")
+  .setDescription("Remove an existing personality")
   .setDefaultMemberPermissions(PermissionFlagsBits.ManageMessages)
   .addStringOption((option) =>
     option
@@ -14,17 +14,6 @@ export const data = new SlashCommandBuilder()
   .setDMPermission(false);
 
 export const execute = async (interaction, state) => {
-  // Check admin/pause state
-  if (
-    !interaction.member.permissions.has(PermissionFlagsBits.ManageMessages) &&
-    state.isPaused === true
-  ) {
-    await interaction.reply({
-      content: process.env.DISABLED_MSG,
-      ephemeral: true,
-    });
-    return;
-  }
   const name = interaction.options.getString("name");
 
   // Check if personality already exists
@@ -41,7 +30,9 @@ export const execute = async (interaction, state) => {
 
   state.personalities.splice(index, 1);
 
-  await interaction.reply(process.env.DEL_PERS_MSG.replace("<n>", name));
+  await interaction.reply(
+    `${name} has been removed from the personality list.`
+  );
 };
 
 export default {

@@ -1,19 +1,7 @@
 import add from "./add.js";
-import disable from "./disable.js";
-import enable from "./enable.js";
 import personalities from "./personalities.js";
-import tokencount from "./tokencount.js";
-import tokenreset from "./tokenreset.js";
 import set from "./set.js";
-import _delete from "./delete.js";
+import remove from "./remove.js";
+import clear from "./clear.js";
 
-export const commands = [
-  add,
-  disable,
-  enable,
-  personalities,
-  tokencount,
-  tokenreset,
-  set,
-  _delete,
-];
+export const commands = [add, personalities, set, remove, clear];

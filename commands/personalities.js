@@ -10,17 +10,6 @@ export const data = new SlashCommandBuilder()
   .setDMPermission(false);
 
 export const execute = async (interaction, state) => {
-  if (
-    !interaction.member.permissions.has(PermissionFlagsBits.ManageMessages) &&
-    state.isPaused === true
-  ) {
-    await interaction.reply({
-      content: process.env.DISABLED_MSG,
-      ephemeral: true,
-    });
-    return;
-  }
-
   let embed = new EmbedBuilder()
     .setColor(0x0099ff) // set the color of the embed
     .setTitle(process.env.PERSONALITY_MSG); // set the title of the embed

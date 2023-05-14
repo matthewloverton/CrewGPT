@@ -130,6 +130,19 @@ function isAdmin(msg) {
   }
 }
 
+const sendError = (msg) => {
+  msg.reply({
+    content:
+      "Request failed. This may be due to a malformed or content moderated prompt. Please try again.",
+  });
+  return msg.reactions.cache
+    .get("🧠")
+    ?.remove()
+    .then(() => {
+      msg.react("⛑️");
+    });
+};
+
 // Listen for interactions/Commands
 client.on(Events.InteractionCreate, async (interaction) => {
   if (interaction.isChatInputCommand()) {
@@ -180,7 +193,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
 const removeMentions = (str) => {
   const regex = /<@\w+>/g;
   const result = str.replace(regex, "");
-  return result;
+  return result.trim();
 };
 
 client.on("messageCreate", async (msg) => {
@@ -215,8 +228,12 @@ client.on("messageCreate", async (msg) => {
     let refMsg = await msg.fetchReference();
     // Check if the reply is to the bot
     if (!(refMsg.author.id === client.user.id)) return;
-  } else if (!msg.mentions.parsedUsers.find((u) => u.client.id === client.id))
-    return;
+  } else {
+    let foundUser = msg.mentions.parsedUsers.find(
+      (u) => u.client.id === client.id
+    );
+    if (foundUser?.id !== client.user.id) return;
+  }
 
   let p = state.personalities[0];
   let threadId = null;
@@ -232,13 +249,27 @@ client.on("messageCreate", async (msg) => {
   if (msg.channel.isThread()) {
     threadId = msg.channelId;
     thread = state.threads.find((thread) => thread.id === threadId);
+    if (!thread) {
+      return msg.reply({
+        content:
+          "This thread has been cleared from CrewGPT's cache, please start a new one.",
+      });
+    }
   } else {
     msg.react("🧠");
-    const title = await summarize(msg.content);
-    newThread = await msg.startThread({
-      name: title,
-      autoArchiveDuration: 60,
-    });
+    let title = removeMentions(msg.content);
+    if (msg.content.split(" ").length > 20) {
+      title = await summarize(removeMentions(msg.content));
+    }
+    newThread = await msg
+      .startThread({
+        name: title,
+        autoArchiveDuration: 60,
+      })
+      .catch((err) => {
+        console.log(err);
+      });
+    if (!newThread) return sendError(msg);
   }
 
   // Check if it is a new month
@@ -280,8 +311,12 @@ client.on("messageCreate", async (msg) => {
   newThread ? newThread.sendTyping() : msg.channel.sendTyping();
   // Run API request function
   const response = newThread
-    ? await chat(request, msg)
-    : await chat(thread.request, msg);
+    ? await chat(request, msg).catch(() => {
+        return sendError(msg);
+      })
+    : await chat(thread.request, msg).catch(() => {
+        return sendError(msg);
+      });
 
   // Split response if it exceeds the Discord 2000 character limit
   const responseChunks = splitMessage(response, 2000);
@@ -293,6 +328,12 @@ client.on("messageCreate", async (msg) => {
       msg.channel.send(responseChunks[i]);
     }
   }
+  msg.reactions.cache
+    .get("🧠")
+    ?.remove()
+    .then(() => {
+      msg.react("✅");
+    });
 });
 
 const chat = async (requestX, msg) => {
@@ -342,7 +383,6 @@ const summarize = async (prompt) => {
 
     // Increase total token count
     state.totalTokenCount += completion.data.usage.total_tokens;
-
     return completion.data.choices[0].message.content;
   } catch (error) {
     // Return error message if API error occurs
